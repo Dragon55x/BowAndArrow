@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace BAA.Editor
@@ -19,6 +20,15 @@ namespace BAA.Editor
         private const string JoystickPrefabPath = "Assets/Game/Prefabs/UI/VirtualJoystick.prefab";
         private const string PlayerPrefabPath = "Assets/Game/Prefabs/Characters/Player.prefab";
         private const string ScenePath = "Assets/Game/Scenes/CoreCombat.unity";
+        private const string FloorMaterialPath = "Assets/Game/Materials/ArenaFloor.mat";
+        private const string WallMaterialPath = "Assets/Game/Materials/ArenaWall.mat";
+        private const string TrimMaterialPath = "Assets/Game/Materials/ArenaTrim.mat";
+        private const string PlayerMaterialPath = "Assets/Game/Materials/PlayerBody.mat";
+        private const string PlayerAccentMaterialPath = "Assets/Game/Materials/PlayerAccent.mat";
+        private const string EnemyMaterialPath = "Assets/Game/Materials/EnemyBody.mat";
+        private const string EnemyAccentMaterialPath = "Assets/Game/Materials/EnemyAccent.mat";
+        private const string ArrowMaterialPath = "Assets/Game/Materials/Arrow.mat";
+        private const string DummyMaterialPath = "Assets/Game/Materials/TargetDummy.mat";
         private const string EnemyLayerName = "Enemy";
         private const string PlayerLayerName = "Player";
         private const string ProjectileLayerName = "PlayerProjectile";
@@ -33,21 +43,32 @@ namespace BAA.Editor
             var projectileLayer = EnsureLayer(ProjectileLayerName);
             ConfigureProjectileCollisions(projectileLayer, enemyLayer);
 
+            var visuals = CreateOrUpdateVisualMaterials();
             var playerConfig = CreateOrUpdatePlayerConfig();
             var enemyConfig = CreateOrUpdateEnemyConfig();
             var arrowConfig = CreateOrUpdateArrowConfig();
-            var arrowPrefab = CreateArrowPrefab(projectileLayer);
-            CreateTargetDummyPrefab(enemyLayer);
-            var meleeEnemyPrefab = CreateMeleeEnemyPrefab(enemyConfig, enemyLayer, playerLayer);
+            var arrowPrefab = CreateArrowPrefab(projectileLayer, visuals.Arrow);
+            CreateTargetDummyPrefab(enemyLayer, visuals.Dummy);
+            var meleeEnemyPrefab = CreateMeleeEnemyPrefab(
+                enemyConfig,
+                enemyLayer,
+                playerLayer,
+                visuals);
             var joystickPrefab = CreateVirtualJoystickPrefab();
             var playerPrefab = CreatePlayerPrefab(
                 playerConfig,
                 arrowConfig,
                 arrowPrefab,
                 enemyLayer,
-                playerLayer);
+                playerLayer,
+                visuals);
 
-            CreateCoreCombatScene(playerPrefab, meleeEnemyPrefab, joystickPrefab, enemyLayer);
+            CreateCoreCombatScene(
+                playerPrefab,
+                meleeEnemyPrefab,
+                joystickPrefab,
+                enemyLayer,
+                visuals);
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene(ScenePath, true)
@@ -68,6 +89,7 @@ namespace BAA.Editor
             EnsureFolder("Assets/Game/Prefabs/Enemies");
             EnsureFolder("Assets/Game/Prefabs/Projectiles");
             EnsureFolder("Assets/Game/Prefabs/UI");
+            EnsureFolder("Assets/Game/Materials");
             EnsureFolder("Assets/Game/Scenes");
         }
 
@@ -187,7 +209,101 @@ namespace BAA.Editor
             return asset;
         }
 
-        private static GameObject CreateArrowPrefab(int projectileLayer)
+        private static VisualMaterials CreateOrUpdateVisualMaterials()
+        {
+            return new VisualMaterials(
+                CreateOrUpdateMaterial(
+                    FloorMaterialPath,
+                    new Color(0.075f, 0.13f, 0.16f),
+                    0f,
+                    0.18f),
+                CreateOrUpdateMaterial(
+                    WallMaterialPath,
+                    new Color(0.24f, 0.29f, 0.36f),
+                    0f,
+                    0.24f),
+                CreateOrUpdateMaterial(
+                    TrimMaterialPath,
+                    new Color(0.12f, 0.38f, 0.46f),
+                    0f,
+                    0.3f,
+                    new Color(0.02f, 0.12f, 0.15f)),
+                CreateOrUpdateMaterial(
+                    PlayerMaterialPath,
+                    new Color(0.05f, 0.52f, 0.95f),
+                    0.05f,
+                    0.42f),
+                CreateOrUpdateMaterial(
+                    PlayerAccentMaterialPath,
+                    new Color(0.1f, 0.85f, 1f),
+                    0f,
+                    0.35f,
+                    new Color(0.03f, 0.3f, 0.42f)),
+                CreateOrUpdateMaterial(
+                    EnemyMaterialPath,
+                    new Color(0.95f, 0.24f, 0.08f),
+                    0f,
+                    0.32f),
+                CreateOrUpdateMaterial(
+                    EnemyAccentMaterialPath,
+                    new Color(0.48f, 0.035f, 0.02f),
+                    0f,
+                    0.28f,
+                    new Color(0.18f, 0.01f, 0f)),
+                CreateOrUpdateMaterial(
+                    ArrowMaterialPath,
+                    new Color(1f, 0.72f, 0.08f),
+                    0.05f,
+                    0.48f,
+                    new Color(0.32f, 0.16f, 0.01f)),
+                CreateOrUpdateMaterial(
+                    DummyMaterialPath,
+                    new Color(0.48f, 0.5f, 0.54f),
+                    0f,
+                    0.2f));
+        }
+
+        private static Material CreateOrUpdateMaterial(
+            string path,
+            Color color,
+            float metallic,
+            float smoothness,
+            Color emission = default)
+        {
+            var shader = Shader.Find("Standard");
+            if (shader == null)
+            {
+                throw new InvalidOperationException("Built-in Standard shader is unavailable.");
+            }
+
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            material.shader = shader;
+            material.color = color;
+            material.SetFloat("_Metallic", metallic);
+            material.SetFloat("_Glossiness", smoothness);
+            if (emission.maxColorComponent > 0f)
+            {
+                material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", emission);
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            }
+            else
+            {
+                material.DisableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", Color.black);
+            }
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static GameObject CreateArrowPrefab(int projectileLayer, Material arrowMaterial)
         {
             var root = GameObject.CreatePrimitive(PrimitiveType.Cube);
             try
@@ -196,6 +312,7 @@ namespace BAA.Editor
                 SetLayerRecursively(root, projectileLayer);
                 root.transform.localScale = new Vector3(0.16f, 0.16f, 0.7f);
                 root.GetComponent<BoxCollider>().isTrigger = true;
+                root.GetComponent<Renderer>().sharedMaterial = arrowMaterial;
 
                 var body = root.AddComponent<Rigidbody>();
                 body.useGravity = false;
@@ -211,7 +328,7 @@ namespace BAA.Editor
             }
         }
 
-        private static GameObject CreateTargetDummyPrefab(int enemyLayer)
+        private static GameObject CreateTargetDummyPrefab(int enemyLayer, Material dummyMaterial)
         {
             var root = new GameObject("TargetDummy");
             try
@@ -228,6 +345,7 @@ namespace BAA.Editor
                 model.transform.localPosition = Vector3.up;
                 SetLayerRecursively(model, enemyLayer);
                 model.GetComponent<CapsuleCollider>().isTrigger = false;
+                model.GetComponent<Renderer>().sharedMaterial = dummyMaterial;
 
                 return SavePrefab(root, DummyPrefabPath);
             }
@@ -252,6 +370,7 @@ namespace BAA.Editor
                 var backgroundImage = root.GetComponent<Image>();
                 backgroundImage.color = new Color(0.08f, 0.08f, 0.08f, 0.45f);
                 backgroundImage.raycastTarget = true;
+                backgroundImage.sprite = LoadBuiltinUiSprite("UI/Skin/Knob.psd");
 
                 var handleObject = new GameObject(
                     "Handle",
@@ -266,8 +385,9 @@ namespace BAA.Editor
                 handle.anchoredPosition = Vector2.zero;
                 handle.sizeDelta = new Vector2(90f, 90f);
                 var handleImage = handleObject.GetComponent<Image>();
-                handleImage.color = new Color(0.9f, 0.9f, 0.9f, 0.8f);
+                handleImage.color = new Color(0.1f, 0.72f, 1f, 0.9f);
                 handleImage.raycastTarget = false;
+                handleImage.sprite = LoadBuiltinUiSprite("UI/Skin/Knob.psd");
 
                 var joystick = root.GetComponent<VirtualJoystick>();
                 var joystickData = new SerializedObject(joystick);
@@ -287,7 +407,8 @@ namespace BAA.Editor
         private static GameObject CreateMeleeEnemyPrefab(
             EnemyConfig config,
             int enemyLayer,
-            int playerLayer)
+            int playerLayer,
+            VisualMaterials visuals)
         {
             var root = new GameObject("MeleeEnemy");
             try
@@ -309,8 +430,27 @@ namespace BAA.Editor
                 model.name = "Model";
                 model.transform.SetParent(root.transform, false);
                 model.transform.localPosition = Vector3.up;
+                model.transform.localScale = new Vector3(0.95f, 1.05f, 0.95f);
                 SetLayerRecursively(model, enemyLayer);
                 UnityEngine.Object.DestroyImmediate(model.GetComponent<Collider>());
+                model.GetComponent<Renderer>().sharedMaterial = visuals.Enemy;
+
+                CreateVisualPrimitive(
+                    "FactionPad",
+                    PrimitiveType.Cylinder,
+                    root.transform,
+                    new Vector3(0f, 0.035f, 0f),
+                    new Vector3(0.72f, 0.025f, 0.72f),
+                    visuals.EnemyAccent,
+                    enemyLayer);
+                CreateVisualPrimitive(
+                    "EnemyBand",
+                    PrimitiveType.Cube,
+                    root.transform,
+                    new Vector3(0f, 1.05f, 0.47f),
+                    new Vector3(0.7f, 0.22f, 0.12f),
+                    visuals.EnemyAccent,
+                    enemyLayer);
 
                 var telegraph = root.AddComponent<EnemyTelegraphView>();
                 var telegraphData = new SerializedObject(telegraph);
@@ -342,7 +482,8 @@ namespace BAA.Editor
             ProjectileConfig arrowConfig,
             GameObject arrowPrefab,
             int enemyLayer,
-            int playerLayer)
+            int playerLayer,
+            VisualMaterials visuals)
         {
             var root = new GameObject("Player");
             try
@@ -359,8 +500,27 @@ namespace BAA.Editor
                 model.name = "Model";
                 model.transform.SetParent(root.transform, false);
                 model.transform.localPosition = Vector3.up;
+                model.transform.localScale = new Vector3(0.82f, 1f, 0.82f);
                 SetLayerRecursively(model, playerLayer);
                 UnityEngine.Object.DestroyImmediate(model.GetComponent<Collider>());
+                model.GetComponent<Renderer>().sharedMaterial = visuals.Player;
+
+                CreateVisualPrimitive(
+                    "FactionPad",
+                    PrimitiveType.Cylinder,
+                    root.transform,
+                    new Vector3(0f, 0.03f, 0f),
+                    new Vector3(0.68f, 0.022f, 0.68f),
+                    visuals.PlayerAccent,
+                    playerLayer);
+                CreateVisualPrimitive(
+                    "FacingMarker",
+                    PrimitiveType.Cube,
+                    root.transform,
+                    new Vector3(0f, 0.85f, 0.48f),
+                    new Vector3(0.22f, 0.18f, 0.32f),
+                    visuals.PlayerAccent,
+                    playerLayer);
 
                 var firePointObject = new GameObject("FirePoint");
                 firePointObject.transform.SetParent(root.transform, false);
@@ -427,11 +587,12 @@ namespace BAA.Editor
             GameObject playerPrefab,
             GameObject meleeEnemyPrefab,
             GameObject joystickPrefab,
-            int enemyLayer)
+            int enemyLayer,
+            VisualMaterials visuals)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            CreateRoom();
+            CreateRoom(visuals);
             CreateLighting();
             CreateCamera();
 
@@ -471,13 +632,58 @@ namespace BAA.Editor
             }
         }
 
-        private static void CreateRoom()
+        private static void CreateRoom(VisualMaterials visuals)
         {
-            CreateCube("Floor", new Vector3(0f, -0.1f, 0f), new Vector3(16f, 0.2f, 24f));
-            CreateCube("Wall_Left", new Vector3(-8.25f, 1.5f, 0f), new Vector3(0.5f, 3f, 24.5f));
-            CreateCube("Wall_Right", new Vector3(8.25f, 1.5f, 0f), new Vector3(0.5f, 3f, 24.5f));
-            CreateCube("Wall_Back", new Vector3(0f, 1.5f, -12.25f), new Vector3(17f, 3f, 0.5f));
-            CreateCube("Wall_Front", new Vector3(0f, 1.5f, 12.25f), new Vector3(17f, 3f, 0.5f));
+            CreateCube(
+                "Floor",
+                new Vector3(0f, -0.1f, 0f),
+                new Vector3(16f, 0.2f, 24f),
+                visuals.Floor);
+            CreateCube(
+                "Wall_Left",
+                new Vector3(-8.25f, 1.5f, 0f),
+                new Vector3(0.5f, 3f, 24.5f),
+                visuals.Wall);
+            CreateCube(
+                "Wall_Right",
+                new Vector3(8.25f, 1.5f, 0f),
+                new Vector3(0.5f, 3f, 24.5f),
+                visuals.Wall);
+            CreateCube(
+                "Wall_Back",
+                new Vector3(0f, 1.5f, -12.25f),
+                new Vector3(17f, 3f, 0.5f),
+                visuals.Wall);
+            CreateCube(
+                "Wall_Front",
+                new Vector3(0f, 1.5f, 12.25f),
+                new Vector3(17f, 3f, 0.5f),
+                visuals.Wall);
+
+            CreateCube(
+                "Trim_Left",
+                new Vector3(-7.75f, 0.035f, 0f),
+                new Vector3(0.12f, 0.07f, 23.5f),
+                visuals.Trim,
+                false);
+            CreateCube(
+                "Trim_Right",
+                new Vector3(7.75f, 0.035f, 0f),
+                new Vector3(0.12f, 0.07f, 23.5f),
+                visuals.Trim,
+                false);
+            CreateCube(
+                "Trim_Back",
+                new Vector3(0f, 0.035f, -11.75f),
+                new Vector3(15.6f, 0.07f, 0.12f),
+                visuals.Trim,
+                false);
+            CreateCube(
+                "Trim_Front",
+                new Vector3(0f, 0.035f, 11.75f),
+                new Vector3(15.6f, 0.07f, 0.12f),
+                visuals.Trim,
+                false);
         }
 
         private static void CreateLighting()
@@ -486,8 +692,23 @@ namespace BAA.Editor
             lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
             var light = lightObject.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.1f;
+            light.color = new Color(1f, 0.88f, 0.74f);
+            light.intensity = 1.05f;
             light.shadows = LightShadows.Soft;
+
+            var fillObject = new GameObject("Directional Fill Light");
+            fillObject.transform.rotation = Quaternion.Euler(55f, 145f, 0f);
+            var fill = fillObject.AddComponent<Light>();
+            fill.type = LightType.Directional;
+            fill.color = new Color(0.35f, 0.58f, 1f);
+            fill.intensity = 0.34f;
+            fill.shadows = LightShadows.None;
+
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.18f, 0.25f, 0.38f);
+            RenderSettings.ambientEquatorColor = new Color(0.11f, 0.16f, 0.22f);
+            RenderSettings.ambientGroundColor = new Color(0.045f, 0.055f, 0.07f);
+            RenderSettings.ambientIntensity = 0.82f;
         }
 
         private static void CreateCamera()
@@ -499,11 +720,11 @@ namespace BAA.Editor
                 Quaternion.Euler(55f, 0f, 0f));
             var camera = cameraObject.AddComponent<Camera>();
             camera.orthographic = true;
-            camera.orthographicSize = 16f;
+            camera.orthographicSize = 14.5f;
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = 100f;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.12f, 0.15f, 0.18f);
+            camera.backgroundColor = new Color(0.025f, 0.04f, 0.065f);
             cameraObject.AddComponent<AudioListener>();
         }
 
@@ -680,13 +901,84 @@ namespace BAA.Editor
             public Button RestartButton { get; }
         }
 
-        private static GameObject CreateCube(string name, Vector3 position, Vector3 scale)
+        private readonly struct VisualMaterials
+        {
+            public VisualMaterials(
+                Material floor,
+                Material wall,
+                Material trim,
+                Material player,
+                Material playerAccent,
+                Material enemy,
+                Material enemyAccent,
+                Material arrow,
+                Material dummy)
+            {
+                Floor = floor;
+                Wall = wall;
+                Trim = trim;
+                Player = player;
+                PlayerAccent = playerAccent;
+                Enemy = enemy;
+                EnemyAccent = enemyAccent;
+                Arrow = arrow;
+                Dummy = dummy;
+            }
+
+            public Material Floor { get; }
+            public Material Wall { get; }
+            public Material Trim { get; }
+            public Material Player { get; }
+            public Material PlayerAccent { get; }
+            public Material Enemy { get; }
+            public Material EnemyAccent { get; }
+            public Material Arrow { get; }
+            public Material Dummy { get; }
+        }
+
+        private static GameObject CreateCube(
+            string name,
+            Vector3 position,
+            Vector3 scale,
+            Material material,
+            bool keepCollider = true)
         {
             var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cube.name = name;
             cube.transform.position = position;
             cube.transform.localScale = scale;
+            cube.GetComponent<Renderer>().sharedMaterial = material;
+            if (!keepCollider)
+            {
+                UnityEngine.Object.DestroyImmediate(cube.GetComponent<Collider>());
+            }
+
             return cube;
+        }
+
+        private static GameObject CreateVisualPrimitive(
+            string name,
+            PrimitiveType primitiveType,
+            Transform parent,
+            Vector3 localPosition,
+            Vector3 localScale,
+            Material material,
+            int layer)
+        {
+            var visual = GameObject.CreatePrimitive(primitiveType);
+            visual.name = name;
+            visual.transform.SetParent(parent, false);
+            visual.transform.localPosition = localPosition;
+            visual.transform.localScale = localScale;
+            visual.layer = layer;
+            visual.GetComponent<Renderer>().sharedMaterial = material;
+            UnityEngine.Object.DestroyImmediate(visual.GetComponent<Collider>());
+            return visual;
+        }
+
+        private static Sprite LoadBuiltinUiSprite(string path)
+        {
+            return AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
         }
 
         private static GameObject InstantiatePrefab(GameObject prefab, string name, Vector3 position)

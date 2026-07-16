@@ -11,13 +11,16 @@ namespace BAA.Editor
     public static class CoreCombatSceneBuilder
     {
         private const string PlayerConfigPath = "Assets/Game/Data/Player/PlayerConfig.asset";
+        private const string EnemyConfigPath = "Assets/Game/Data/Enemies/MeleeEnemyConfig.asset";
         private const string ArrowConfigPath = "Assets/Game/Data/Projectiles/ArrowConfig.asset";
         private const string ArrowPrefabPath = "Assets/Game/Prefabs/Projectiles/Arrow.prefab";
         private const string DummyPrefabPath = "Assets/Game/Prefabs/Enemies/TargetDummy.prefab";
+        private const string MeleeEnemyPrefabPath = "Assets/Game/Prefabs/Enemies/MeleeEnemy.prefab";
         private const string JoystickPrefabPath = "Assets/Game/Prefabs/UI/VirtualJoystick.prefab";
         private const string PlayerPrefabPath = "Assets/Game/Prefabs/Characters/Player.prefab";
         private const string ScenePath = "Assets/Game/Scenes/CoreCombat.unity";
         private const string EnemyLayerName = "Enemy";
+        private const string PlayerLayerName = "Player";
         private const string ProjectileLayerName = "PlayerProjectile";
 
         [MenuItem("BAA/Build Core Combat Scene")]
@@ -26,21 +29,25 @@ namespace BAA.Editor
             EnsureOutputFolders();
 
             var enemyLayer = EnsureLayer(EnemyLayerName);
+            var playerLayer = EnsureLayer(PlayerLayerName);
             var projectileLayer = EnsureLayer(ProjectileLayerName);
             ConfigureProjectileCollisions(projectileLayer, enemyLayer);
 
             var playerConfig = CreateOrUpdatePlayerConfig();
+            var enemyConfig = CreateOrUpdateEnemyConfig();
             var arrowConfig = CreateOrUpdateArrowConfig();
             var arrowPrefab = CreateArrowPrefab(projectileLayer);
-            var dummyPrefab = CreateTargetDummyPrefab(enemyLayer);
+            CreateTargetDummyPrefab(enemyLayer);
+            var meleeEnemyPrefab = CreateMeleeEnemyPrefab(enemyConfig, enemyLayer, playerLayer);
             var joystickPrefab = CreateVirtualJoystickPrefab();
             var playerPrefab = CreatePlayerPrefab(
                 playerConfig,
                 arrowConfig,
                 arrowPrefab,
-                enemyLayer);
+                enemyLayer,
+                playerLayer);
 
-            CreateCoreCombatScene(playerPrefab, dummyPrefab, joystickPrefab, enemyLayer);
+            CreateCoreCombatScene(playerPrefab, meleeEnemyPrefab, joystickPrefab, enemyLayer);
             EditorBuildSettings.scenes = new[]
             {
                 new EditorBuildSettingsScene(ScenePath, true)
@@ -49,12 +56,13 @@ namespace BAA.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Selection.activeObject = AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath);
-            Debug.Log("phase 1 complete — playable single-room core combat vertical slice");
+            Debug.Log("phase 2A complete — melee enemies, player damage, game over, and restart");
         }
 
         private static void EnsureOutputFolders()
         {
             EnsureFolder("Assets/Game/Data/Player");
+            EnsureFolder("Assets/Game/Data/Enemies");
             EnsureFolder("Assets/Game/Data/Projectiles");
             EnsureFolder("Assets/Game/Prefabs/Characters");
             EnsureFolder("Assets/Game/Prefabs/Enemies");
@@ -146,6 +154,22 @@ namespace BAA.Editor
             var config = LoadOrCreateAsset<ProjectileConfig>(ArrowConfigPath);
             config.Speed = 16f;
             config.Lifetime = 3f;
+            EditorUtility.SetDirty(config);
+            return config;
+        }
+
+        private static EnemyConfig CreateOrUpdateEnemyConfig()
+        {
+            var config = LoadOrCreateAsset<EnemyConfig>(EnemyConfigPath);
+            config.MaxHealth = 30f;
+            config.MoveSpeed = 2.5f;
+            config.RotationSpeed = 540f;
+            config.SpawnDelay = 0.5f;
+            config.AttackRange = 1.4f;
+            config.HitRadius = 0.75f;
+            config.WindupDuration = 0.4f;
+            config.RecoveryDuration = 1f;
+            config.Damage = 15f;
             EditorUtility.SetDirty(config);
             return config;
         }
@@ -260,15 +284,71 @@ namespace BAA.Editor
             }
         }
 
+        private static GameObject CreateMeleeEnemyPrefab(
+            EnemyConfig config,
+            int enemyLayer,
+            int playerLayer)
+        {
+            var root = new GameObject("MeleeEnemy");
+            try
+            {
+                SetLayerRecursively(root, enemyLayer);
+                var controller = root.AddComponent<CharacterController>();
+                controller.center = Vector3.up;
+                controller.radius = 0.45f;
+                controller.height = 2f;
+                controller.stepOffset = 0.3f;
+
+                var health = root.AddComponent<CharacterHealth>();
+                var healthData = new SerializedObject(health);
+                RequireProperty(healthData, "initialMaxHealth").floatValue = config.MaxHealth;
+                RequireProperty(healthData, "invulnerabilityDuration").floatValue = 0f;
+                healthData.ApplyModifiedPropertiesWithoutUndo();
+
+                var model = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                model.name = "Model";
+                model.transform.SetParent(root.transform, false);
+                model.transform.localPosition = Vector3.up;
+                SetLayerRecursively(model, enemyLayer);
+                UnityEngine.Object.DestroyImmediate(model.GetComponent<Collider>());
+
+                var telegraph = root.AddComponent<EnemyTelegraphView>();
+                var telegraphData = new SerializedObject(telegraph);
+                RequireProperty(telegraphData, "targetRenderer").objectReferenceValue =
+                    model.GetComponent<Renderer>();
+                RequireProperty(telegraphData, "warningColor").colorValue =
+                    new Color(1f, 0.1f, 0.1f, 1f);
+                telegraphData.ApplyModifiedPropertiesWithoutUndo();
+
+                var brain = root.AddComponent<EnemyMeleeBrain>();
+                var brainData = new SerializedObject(brain);
+                RequireProperty(brainData, "config").objectReferenceValue = config;
+                RequireProperty(brainData, "controller").objectReferenceValue = controller;
+                RequireProperty(brainData, "health").objectReferenceValue = health;
+                RequireProperty(brainData, "telegraph").objectReferenceValue = telegraph;
+                RequireProperty(brainData, "playerMask").intValue = 1 << playerLayer;
+                brainData.ApplyModifiedPropertiesWithoutUndo();
+
+                return SavePrefab(root, MeleeEnemyPrefabPath);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
         private static GameObject CreatePlayerPrefab(
             PlayerConfig playerConfig,
             ProjectileConfig arrowConfig,
             GameObject arrowPrefab,
-            int enemyLayer)
+            int enemyLayer,
+            int playerLayer)
         {
             var root = new GameObject("Player");
             try
             {
+                root.tag = "Player";
+                SetLayerRecursively(root, playerLayer);
                 var controller = root.AddComponent<CharacterController>();
                 controller.center = Vector3.up;
                 controller.radius = 0.45f;
@@ -279,6 +359,7 @@ namespace BAA.Editor
                 model.name = "Model";
                 model.transform.SetParent(root.transform, false);
                 model.transform.localPosition = Vector3.up;
+                SetLayerRecursively(model, playerLayer);
                 UnityEngine.Object.DestroyImmediate(model.GetComponent<Collider>());
 
                 var firePointObject = new GameObject("FirePoint");
@@ -321,6 +402,7 @@ namespace BAA.Editor
 
                 var healthData = new SerializedObject(health);
                 RequireProperty(healthData, "initialMaxHealth").floatValue = 100f;
+                RequireProperty(healthData, "invulnerabilityDuration").floatValue = 0.3f;
                 healthData.ApplyModifiedPropertiesWithoutUndo();
 
                 var combatData = new SerializedObject(combat);
@@ -343,7 +425,7 @@ namespace BAA.Editor
 
         private static void CreateCoreCombatScene(
             GameObject playerPrefab,
-            GameObject dummyPrefab,
+            GameObject meleeEnemyPrefab,
             GameObject joystickPrefab,
             int enemyLayer)
         {
@@ -354,25 +436,33 @@ namespace BAA.Editor
             CreateCamera();
 
             var player = InstantiatePrefab(playerPrefab, "Player", new Vector3(0f, 0f, -4f));
-            var dummyPositions = new[]
+            var enemyPositions = new[]
             {
                 new Vector3(-4f, 0f, 3f),
                 new Vector3(0f, 0f, 5f),
                 new Vector3(4f, 0f, 3f)
             };
-            for (var i = 0; i < dummyPositions.Length; i++)
+            for (var i = 0; i < enemyPositions.Length; i++)
             {
-                var dummy = InstantiatePrefab(
-                    dummyPrefab,
-                    $"TargetDummy_{i + 1}",
-                    dummyPositions[i]);
-                SetLayerRecursively(dummy, enemyLayer);
+                var enemy = InstantiatePrefab(
+                    meleeEnemyPrefab,
+                    $"MeleeEnemy_{i + 1}",
+                    enemyPositions[i]);
+                SetLayerRecursively(enemy, enemyLayer);
             }
 
-            var joystick = CreateUi(joystickPrefab);
+            var ui = CreateUi(joystickPrefab);
             var inputData = new SerializedObject(player.GetComponent<PlayerInputReader>());
-            RequireProperty(inputData, "virtualJoystick").objectReferenceValue = joystick;
+            RequireProperty(inputData, "virtualJoystick").objectReferenceValue = ui.Joystick;
             inputData.ApplyModifiedPropertiesWithoutUndo();
+
+            var gameFlow = new GameObject("GameFlow");
+            var health = player.GetComponent<CharacterHealth>();
+            gameFlow.AddComponent<PlayerHealthBar>().Configure(health, ui.HealthSlider);
+            gameFlow.AddComponent<GameOverController>().Configure(
+                health,
+                ui.GameOverPanel,
+                ui.RestartButton);
 
             EditorSceneManager.MarkSceneDirty(scene);
             if (!EditorSceneManager.SaveScene(scene, ScenePath))
@@ -417,7 +507,7 @@ namespace BAA.Editor
             cameraObject.AddComponent<AudioListener>();
         }
 
-        private static VirtualJoystick CreateUi(GameObject joystickPrefab)
+        private static UiReferences CreateUi(GameObject joystickPrefab)
         {
             var canvasObject = new GameObject(
                 "Canvas",
@@ -453,7 +543,141 @@ namespace BAA.Editor
                 "EventSystem",
                 typeof(EventSystem),
                 typeof(StandaloneInputModule));
-            return joystickObject.GetComponent<VirtualJoystick>();
+
+            var healthSlider = CreateHealthSlider(canvasObject.transform);
+            var gameOverPanel = CreateGameOverPanel(canvasObject.transform, out var restartButton);
+            return new UiReferences(
+                joystickObject.GetComponent<VirtualJoystick>(),
+                healthSlider,
+                gameOverPanel,
+                restartButton);
+        }
+
+        private static Slider CreateHealthSlider(Transform parent)
+        {
+            var root = new GameObject("PlayerHealthBar", typeof(RectTransform), typeof(Slider));
+            var rootRect = root.GetComponent<RectTransform>();
+            rootRect.SetParent(parent, false);
+            rootRect.anchorMin = new Vector2(0.5f, 1f);
+            rootRect.anchorMax = new Vector2(0.5f, 1f);
+            rootRect.pivot = new Vector2(0.5f, 1f);
+            rootRect.anchoredPosition = new Vector2(0f, -70f);
+            rootRect.sizeDelta = new Vector2(600f, 42f);
+
+            var background = CreateUiImage(
+                "Background",
+                rootRect,
+                new Color(0.08f, 0.08f, 0.08f, 0.85f));
+            Stretch(background.rectTransform, Vector2.zero, Vector2.zero);
+
+            var fillArea = new GameObject("Fill Area", typeof(RectTransform));
+            var fillAreaRect = fillArea.GetComponent<RectTransform>();
+            fillAreaRect.SetParent(rootRect, false);
+            Stretch(fillAreaRect, new Vector2(5f, 5f), new Vector2(-5f, -5f));
+
+            var fill = CreateUiImage(
+                "Fill",
+                fillAreaRect,
+                new Color(0.18f, 0.85f, 0.25f, 1f));
+            Stretch(fill.rectTransform, Vector2.zero, Vector2.zero);
+
+            var slider = root.GetComponent<Slider>();
+            slider.minValue = 0f;
+            slider.maxValue = 100f;
+            slider.value = 100f;
+            slider.fillRect = fill.rectTransform;
+            slider.targetGraphic = fill;
+            slider.direction = Slider.Direction.LeftToRight;
+            return slider;
+        }
+
+        private static GameObject CreateGameOverPanel(Transform parent, out Button restartButton)
+        {
+            var panelImage = CreateUiImage(
+                "GameOverPanel",
+                parent,
+                new Color(0f, 0f, 0f, 0.72f));
+            var panel = panelImage.gameObject;
+            Stretch(panelImage.rectTransform, Vector2.zero, Vector2.zero);
+
+            var title = CreateUiText("Title", panel.transform, "GAME OVER", 72);
+            var titleRect = title.rectTransform;
+            titleRect.anchorMin = new Vector2(0.5f, 0.5f);
+            titleRect.anchorMax = new Vector2(0.5f, 0.5f);
+            titleRect.pivot = new Vector2(0.5f, 0.5f);
+            titleRect.anchoredPosition = new Vector2(0f, 100f);
+            titleRect.sizeDelta = new Vector2(800f, 120f);
+
+            var buttonImage = CreateUiImage(
+                "RestartButton",
+                panel.transform,
+                new Color(0.2f, 0.55f, 0.95f, 1f));
+            var buttonRect = buttonImage.rectTransform;
+            buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
+            buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+            buttonRect.pivot = new Vector2(0.5f, 0.5f);
+            buttonRect.anchoredPosition = new Vector2(0f, -80f);
+            buttonRect.sizeDelta = new Vector2(420f, 110f);
+            restartButton = buttonImage.gameObject.AddComponent<Button>();
+            restartButton.targetGraphic = buttonImage;
+
+            var label = CreateUiText("Label", restartButton.transform, "RESTART", 44);
+            Stretch(label.rectTransform, Vector2.zero, Vector2.zero);
+            panel.SetActive(false);
+            return panel;
+        }
+
+        private static Image CreateUiImage(string name, Transform parent, Color color)
+        {
+            var gameObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            var rect = gameObject.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            var image = gameObject.GetComponent<Image>();
+            image.color = color;
+            return image;
+        }
+
+        private static Text CreateUiText(string name, Transform parent, string value, int fontSize)
+        {
+            var gameObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            var rect = gameObject.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            var text = gameObject.GetComponent<Text>();
+            text.text = value;
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = fontSize;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.raycastTarget = false;
+            return text;
+        }
+
+        private static void Stretch(RectTransform rect, Vector2 offsetMin, Vector2 offsetMax)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
+        }
+
+        private readonly struct UiReferences
+        {
+            public UiReferences(
+                VirtualJoystick joystick,
+                Slider healthSlider,
+                GameObject gameOverPanel,
+                Button restartButton)
+            {
+                Joystick = joystick;
+                HealthSlider = healthSlider;
+                GameOverPanel = gameOverPanel;
+                RestartButton = restartButton;
+            }
+
+            public VirtualJoystick Joystick { get; }
+            public Slider HealthSlider { get; }
+            public GameObject GameOverPanel { get; }
+            public Button RestartButton { get; }
         }
 
         private static GameObject CreateCube(string name, Vector3 position, Vector3 scale)

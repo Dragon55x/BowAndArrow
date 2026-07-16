@@ -213,6 +213,7 @@ GameObject:
   - component: {fileID: 7175756445813173171}
   - component: {fileID: 4802669926973368132}
   - component: {fileID: 1309679657564286768}
+  - component: {fileID: 3742763542435213133}
   - component: {fileID: 5830570994916334835}
   m_Layer: 10
   m_Name: Player
@@ -326,6 +327,7 @@ MonoBehaviour:
   firePoint: {fileID: 1957094504906501145}
   pool: {fileID: 4802669926973368132}
   projectileConfig: {fileID: 11400000, guid: f4f419922586240b9a875a11fcfcd615, type: 2}
+  ownerHealth: {fileID: 1309679657564286768}
 --- !u!114 &4802669926973368132
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -353,6 +355,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   initialMaxHealth: 100
   invulnerabilityDuration: 0.3
+--- !u!114 &3742763542435213133
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8397258874246204460}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7c8ed074af94a14b10892f6ed79792c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  baseExperienceRequirement: 20
+  requirementGrowth: 1.5
 --- !u!114 &5830570994916334835
 MonoBehaviour:
   m_ObjectHideFlags: 0

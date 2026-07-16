@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 6997890082310489780}
   - component: {fileID: 6675051943746993862}
   - component: {fileID: 8555093712722823458}
+  - component: {fileID: 7629527029314246414}
   m_Layer: 8
   m_Name: MeleeEnemy
   m_TagString: Untagged
@@ -111,6 +112,21 @@ MonoBehaviour:
   playerMask:
     serializedVersion: 2
     m_Bits: 1024
+--- !u!114 &7629527029314246414
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2709735668956438864}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3100f9bd257476b8b43996861f1a4a8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  health: {fileID: 6997890082310489780}
+  orbPrefab: {fileID: 5874450931670633489, guid: 7ac3fb8c553cb4e658d20d76b410b2e4, type: 3}
+  experienceReward: 10
 --- !u!1 &2721765622553013328
 GameObject:
   m_ObjectHideFlags: 0

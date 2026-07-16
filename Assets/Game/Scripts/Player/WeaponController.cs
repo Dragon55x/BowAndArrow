@@ -7,6 +7,7 @@ namespace BAA
         [SerializeField] private Transform firePoint;
         [SerializeField] private ProjectilePool pool;
         [SerializeField] private ProjectileConfig projectileConfig;
+        [SerializeField] private CharacterHealth ownerHealth;
 
         public PlayerRuntimeStats Stats { get; set; }
 
@@ -42,8 +43,19 @@ namespace BAA
                 projectile.Launch(
                     direction * projectileConfig.Speed,
                     snapshot,
-                    projectileConfig.Lifetime);
+                    projectileConfig.Lifetime,
+                    Stats.PierceCount);
             }
+        }
+
+        internal void OnEnemyKilled()
+        {
+            if (Stats == null || ownerHealth == null || Stats.HealOnKill <= 0f)
+            {
+                return;
+            }
+
+            ownerHealth.Heal(Stats.HealOnKill);
         }
     }
 }

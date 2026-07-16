@@ -17,6 +17,7 @@ namespace BAA.Editor
         private const string ArrowPrefabPath = "Assets/Game/Prefabs/Projectiles/Arrow.prefab";
         private const string DummyPrefabPath = "Assets/Game/Prefabs/Enemies/TargetDummy.prefab";
         private const string MeleeEnemyPrefabPath = "Assets/Game/Prefabs/Enemies/MeleeEnemy.prefab";
+        private const string ExperienceOrbPrefabPath = "Assets/Game/Prefabs/Pickups/ExperienceOrb.prefab";
         private const string JoystickPrefabPath = "Assets/Game/Prefabs/UI/VirtualJoystick.prefab";
         private const string PlayerPrefabPath = "Assets/Game/Prefabs/Characters/Player.prefab";
         private const string ScenePath = "Assets/Game/Scenes/CoreCombat.unity";
@@ -29,6 +30,7 @@ namespace BAA.Editor
         private const string EnemyAccentMaterialPath = "Assets/Game/Materials/EnemyAccent.mat";
         private const string ArrowMaterialPath = "Assets/Game/Materials/Arrow.mat";
         private const string DummyMaterialPath = "Assets/Game/Materials/TargetDummy.mat";
+        private const string ExperienceOrbMaterialPath = "Assets/Game/Materials/ExperienceOrb.mat";
         private const string EnemyLayerName = "Enemy";
         private const string PlayerLayerName = "Player";
         private const string ProjectileLayerName = "PlayerProjectile";
@@ -48,11 +50,13 @@ namespace BAA.Editor
             var enemyConfig = CreateOrUpdateEnemyConfig();
             var arrowConfig = CreateOrUpdateArrowConfig();
             var arrowPrefab = CreateArrowPrefab(projectileLayer, visuals.Arrow);
+            var experienceOrbPrefab = CreateExperienceOrbPrefab(visuals.ExperienceOrb);
             CreateTargetDummyPrefab(enemyLayer, visuals.Dummy);
             var meleeEnemyPrefab = CreateMeleeEnemyPrefab(
                 enemyConfig,
                 enemyLayer,
                 playerLayer,
+                experienceOrbPrefab,
                 visuals);
             var joystickPrefab = CreateVirtualJoystickPrefab();
             var playerPrefab = CreatePlayerPrefab(
@@ -77,7 +81,7 @@ namespace BAA.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Selection.activeObject = AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath);
-            Debug.Log("phase 2A complete — melee enemies, player damage, game over, and restart");
+            Debug.Log("phase 2B complete — experience, upgrade choices, and eight combat skills");
         }
 
         private static void EnsureOutputFolders()
@@ -88,6 +92,7 @@ namespace BAA.Editor
             EnsureFolder("Assets/Game/Prefabs/Characters");
             EnsureFolder("Assets/Game/Prefabs/Enemies");
             EnsureFolder("Assets/Game/Prefabs/Projectiles");
+            EnsureFolder("Assets/Game/Prefabs/Pickups");
             EnsureFolder("Assets/Game/Prefabs/UI");
             EnsureFolder("Assets/Game/Materials");
             EnsureFolder("Assets/Game/Scenes");
@@ -192,6 +197,7 @@ namespace BAA.Editor
             config.WindupDuration = 0.4f;
             config.RecoveryDuration = 1f;
             config.Damage = 15f;
+            config.ExperienceReward = 10;
             EditorUtility.SetDirty(config);
             return config;
         }
@@ -260,7 +266,13 @@ namespace BAA.Editor
                     DummyMaterialPath,
                     new Color(0.48f, 0.5f, 0.54f),
                     0f,
-                    0.2f));
+                    0.2f),
+                CreateOrUpdateMaterial(
+                    ExperienceOrbMaterialPath,
+                    new Color(0.15f, 1f, 0.35f),
+                    0f,
+                    0.52f,
+                    new Color(0.05f, 0.65f, 0.12f)));
         }
 
         private static Material CreateOrUpdateMaterial(
@@ -321,6 +333,25 @@ namespace BAA.Editor
                 root.AddComponent<Projectile>();
 
                 return SavePrefab(root, ArrowPrefabPath);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        private static GameObject CreateExperienceOrbPrefab(Material material)
+        {
+            var root = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                root.name = "ExperienceOrb";
+                root.transform.localScale = new Vector3(0.32f, 0.42f, 0.32f);
+                root.transform.rotation = Quaternion.Euler(45f, 45f, 45f);
+                UnityEngine.Object.DestroyImmediate(root.GetComponent<Collider>());
+                root.GetComponent<Renderer>().sharedMaterial = material;
+                root.AddComponent<ExperienceOrb>();
+                return SavePrefab(root, ExperienceOrbPrefabPath);
             }
             finally
             {
@@ -408,6 +439,7 @@ namespace BAA.Editor
             EnemyConfig config,
             int enemyLayer,
             int playerLayer,
+            GameObject experienceOrbPrefab,
             VisualMaterials visuals)
         {
             var root = new GameObject("MeleeEnemy");
@@ -468,6 +500,14 @@ namespace BAA.Editor
                 RequireProperty(brainData, "telegraph").objectReferenceValue = telegraph;
                 RequireProperty(brainData, "playerMask").intValue = 1 << playerLayer;
                 brainData.ApplyModifiedPropertiesWithoutUndo();
+
+                var experienceDrop = root.AddComponent<EnemyExperienceDrop>();
+                var experienceData = new SerializedObject(experienceDrop);
+                RequireProperty(experienceData, "health").objectReferenceValue = health;
+                RequireProperty(experienceData, "orbPrefab").objectReferenceValue =
+                    experienceOrbPrefab.GetComponent<ExperienceOrb>();
+                RequireProperty(experienceData, "experienceReward").intValue = config.ExperienceReward;
+                experienceData.ApplyModifiedPropertiesWithoutUndo();
 
                 return SavePrefab(root, MeleeEnemyPrefabPath);
             }
@@ -532,6 +572,7 @@ namespace BAA.Editor
                 var weapon = root.AddComponent<WeaponController>();
                 var pool = root.AddComponent<ProjectilePool>();
                 var health = root.AddComponent<CharacterHealth>();
+                root.AddComponent<PlayerProgression>();
                 var combat = root.AddComponent<PlayerCombat>();
 
                 var inputData = new SerializedObject(input);
@@ -558,6 +599,7 @@ namespace BAA.Editor
                 RequireProperty(weaponData, "firePoint").objectReferenceValue = firePointObject.transform;
                 RequireProperty(weaponData, "pool").objectReferenceValue = pool;
                 RequireProperty(weaponData, "projectileConfig").objectReferenceValue = arrowConfig;
+                RequireProperty(weaponData, "ownerHealth").objectReferenceValue = health;
                 weaponData.ApplyModifiedPropertiesWithoutUndo();
 
                 var healthData = new SerializedObject(health);
@@ -619,7 +661,20 @@ namespace BAA.Editor
 
             var gameFlow = new GameObject("GameFlow");
             var health = player.GetComponent<CharacterHealth>();
+            var progression = player.GetComponent<PlayerProgression>();
+            var combat = player.GetComponent<PlayerCombat>();
             gameFlow.AddComponent<PlayerHealthBar>().Configure(health, ui.HealthSlider);
+            gameFlow.AddComponent<ExperienceBar>().Configure(
+                progression,
+                ui.ExperienceSlider,
+                ui.LevelText);
+            gameFlow.AddComponent<UpgradeChoiceController>().Configure(
+                progression,
+                combat,
+                ui.UpgradePanel,
+                ui.ChoiceButtons,
+                ui.ChoiceTitles,
+                ui.ChoiceDescriptions);
             gameFlow.AddComponent<GameOverController>().Configure(
                 health,
                 ui.GameOverPanel,
@@ -766,10 +821,22 @@ namespace BAA.Editor
                 typeof(StandaloneInputModule));
 
             var healthSlider = CreateHealthSlider(canvasObject.transform);
+            var experienceSlider = CreateExperienceBar(canvasObject.transform, out var levelText);
+            var upgradePanel = CreateUpgradePanel(
+                canvasObject.transform,
+                out var choiceButtons,
+                out var choiceTitles,
+                out var choiceDescriptions);
             var gameOverPanel = CreateGameOverPanel(canvasObject.transform, out var restartButton);
             return new UiReferences(
                 joystickObject.GetComponent<VirtualJoystick>(),
                 healthSlider,
+                experienceSlider,
+                levelText,
+                upgradePanel,
+                choiceButtons,
+                choiceTitles,
+                choiceDescriptions,
                 gameOverPanel,
                 restartButton);
         }
@@ -810,6 +877,123 @@ namespace BAA.Editor
             slider.targetGraphic = fill;
             slider.direction = Slider.Direction.LeftToRight;
             return slider;
+        }
+
+        private static Slider CreateExperienceBar(Transform parent, out Text levelText)
+        {
+            var root = new GameObject("ExperienceHud", typeof(RectTransform));
+            var rootRect = root.GetComponent<RectTransform>();
+            rootRect.SetParent(parent, false);
+            rootRect.anchorMin = new Vector2(0.5f, 1f);
+            rootRect.anchorMax = new Vector2(0.5f, 1f);
+            rootRect.pivot = new Vector2(0.5f, 1f);
+            rootRect.anchoredPosition = new Vector2(0f, -125f);
+            rootRect.sizeDelta = new Vector2(700f, 38f);
+
+            levelText = CreateUiText("LevelText", root.transform, "LV 1", 28);
+            var levelRect = levelText.rectTransform;
+            levelRect.anchorMin = new Vector2(0f, 0f);
+            levelRect.anchorMax = new Vector2(0f, 1f);
+            levelRect.pivot = new Vector2(0f, 0.5f);
+            levelRect.anchoredPosition = Vector2.zero;
+            levelRect.sizeDelta = new Vector2(105f, 0f);
+            levelText.alignment = TextAnchor.MiddleLeft;
+            levelText.color = new Color(0.45f, 1f, 0.65f);
+
+            var sliderObject = new GameObject("ExperienceBar", typeof(RectTransform), typeof(Slider));
+            var sliderRect = sliderObject.GetComponent<RectTransform>();
+            sliderRect.SetParent(root.transform, false);
+            sliderRect.anchorMin = new Vector2(0f, 0.5f);
+            sliderRect.anchorMax = new Vector2(1f, 0.5f);
+            sliderRect.pivot = new Vector2(0.5f, 0.5f);
+            sliderRect.offsetMin = new Vector2(110f, -13f);
+            sliderRect.offsetMax = new Vector2(0f, 13f);
+
+            var background = CreateUiImage(
+                "Background",
+                sliderRect,
+                new Color(0.025f, 0.08f, 0.045f, 0.92f));
+            Stretch(background.rectTransform, Vector2.zero, Vector2.zero);
+            var fillArea = new GameObject("Fill Area", typeof(RectTransform));
+            var fillAreaRect = fillArea.GetComponent<RectTransform>();
+            fillAreaRect.SetParent(sliderRect, false);
+            Stretch(fillAreaRect, new Vector2(4f, 4f), new Vector2(-4f, -4f));
+            var fill = CreateUiImage(
+                "Fill",
+                fillAreaRect,
+                new Color(0.12f, 0.95f, 0.35f, 1f));
+            Stretch(fill.rectTransform, Vector2.zero, Vector2.zero);
+
+            var slider = sliderObject.GetComponent<Slider>();
+            slider.minValue = 0f;
+            slider.maxValue = 20f;
+            slider.value = 0f;
+            slider.fillRect = fill.rectTransform;
+            slider.targetGraphic = fill;
+            slider.direction = Slider.Direction.LeftToRight;
+            return slider;
+        }
+
+        private static GameObject CreateUpgradePanel(
+            Transform parent,
+            out Button[] buttons,
+            out Text[] titles,
+            out Text[] descriptions)
+        {
+            var panelImage = CreateUiImage(
+                "UpgradePanel",
+                parent,
+                new Color(0.015f, 0.025f, 0.055f, 0.94f));
+            var panel = panelImage.gameObject;
+            Stretch(panelImage.rectTransform, Vector2.zero, Vector2.zero);
+
+            var heading = CreateUiText("Heading", panel.transform, "选择一项强化", 56);
+            var headingRect = heading.rectTransform;
+            headingRect.anchorMin = new Vector2(0.5f, 0.5f);
+            headingRect.anchorMax = new Vector2(0.5f, 0.5f);
+            headingRect.pivot = new Vector2(0.5f, 0.5f);
+            headingRect.anchoredPosition = new Vector2(0f, 500f);
+            headingRect.sizeDelta = new Vector2(850f, 100f);
+            heading.color = new Color(0.4f, 0.9f, 1f);
+
+            buttons = new Button[3];
+            titles = new Text[3];
+            descriptions = new Text[3];
+            var positions = new[] { 260f, 0f, -260f };
+            for (var i = 0; i < 3; i++)
+            {
+                var cardImage = CreateUiImage(
+                    $"SkillChoice_{i + 1}",
+                    panel.transform,
+                    new Color(0.08f + i * 0.025f, 0.2f, 0.32f + i * 0.035f, 1f));
+                var cardRect = cardImage.rectTransform;
+                cardRect.anchorMin = new Vector2(0.5f, 0.5f);
+                cardRect.anchorMax = new Vector2(0.5f, 0.5f);
+                cardRect.pivot = new Vector2(0.5f, 0.5f);
+                cardRect.anchoredPosition = new Vector2(0f, positions[i]);
+                cardRect.sizeDelta = new Vector2(820f, 205f);
+                buttons[i] = cardImage.gameObject.AddComponent<Button>();
+                buttons[i].targetGraphic = cardImage;
+
+                titles[i] = CreateUiText("Title", cardImage.transform, "技能", 40);
+                var titleRect = titles[i].rectTransform;
+                titleRect.anchorMin = new Vector2(0f, 0.48f);
+                titleRect.anchorMax = new Vector2(1f, 1f);
+                titleRect.offsetMin = new Vector2(30f, 0f);
+                titleRect.offsetMax = new Vector2(-30f, -12f);
+                titles[i].color = new Color(1f, 0.82f, 0.24f);
+
+                descriptions[i] = CreateUiText("Description", cardImage.transform, "说明", 27);
+                var descriptionRect = descriptions[i].rectTransform;
+                descriptionRect.anchorMin = new Vector2(0f, 0f);
+                descriptionRect.anchorMax = new Vector2(1f, 0.52f);
+                descriptionRect.offsetMin = new Vector2(30f, 15f);
+                descriptionRect.offsetMax = new Vector2(-30f, 0f);
+                descriptions[i].color = new Color(0.78f, 0.88f, 1f);
+            }
+
+            panel.SetActive(false);
+            return panel;
         }
 
         private static GameObject CreateGameOverPanel(Transform parent, out Button restartButton)
@@ -886,17 +1070,35 @@ namespace BAA.Editor
             public UiReferences(
                 VirtualJoystick joystick,
                 Slider healthSlider,
+                Slider experienceSlider,
+                Text levelText,
+                GameObject upgradePanel,
+                Button[] choiceButtons,
+                Text[] choiceTitles,
+                Text[] choiceDescriptions,
                 GameObject gameOverPanel,
                 Button restartButton)
             {
                 Joystick = joystick;
                 HealthSlider = healthSlider;
+                ExperienceSlider = experienceSlider;
+                LevelText = levelText;
+                UpgradePanel = upgradePanel;
+                ChoiceButtons = choiceButtons;
+                ChoiceTitles = choiceTitles;
+                ChoiceDescriptions = choiceDescriptions;
                 GameOverPanel = gameOverPanel;
                 RestartButton = restartButton;
             }
 
             public VirtualJoystick Joystick { get; }
             public Slider HealthSlider { get; }
+            public Slider ExperienceSlider { get; }
+            public Text LevelText { get; }
+            public GameObject UpgradePanel { get; }
+            public Button[] ChoiceButtons { get; }
+            public Text[] ChoiceTitles { get; }
+            public Text[] ChoiceDescriptions { get; }
             public GameObject GameOverPanel { get; }
             public Button RestartButton { get; }
         }
@@ -912,7 +1114,8 @@ namespace BAA.Editor
                 Material enemy,
                 Material enemyAccent,
                 Material arrow,
-                Material dummy)
+                Material dummy,
+                Material experienceOrb)
             {
                 Floor = floor;
                 Wall = wall;
@@ -923,6 +1126,7 @@ namespace BAA.Editor
                 EnemyAccent = enemyAccent;
                 Arrow = arrow;
                 Dummy = dummy;
+                ExperienceOrb = experienceOrb;
             }
 
             public Material Floor { get; }
@@ -934,6 +1138,7 @@ namespace BAA.Editor
             public Material EnemyAccent { get; }
             public Material Arrow { get; }
             public Material Dummy { get; }
+            public Material ExperienceOrb { get; }
         }
 
         private static GameObject CreateCube(

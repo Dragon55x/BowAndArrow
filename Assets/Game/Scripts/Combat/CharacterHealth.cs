@@ -11,6 +11,7 @@ namespace BAA
         private float _nextDamageTime = float.NegativeInfinity;
 
         public event Action<float> Damaged;
+        public event Action<float> Healed;
         public event Action<CharacterHealth> Died;
 
         public float CurrentHealth { get; private set; }
@@ -57,6 +58,18 @@ namespace BAA
             }
 
             Died?.Invoke(this);
+        }
+
+        public void Heal(float amount)
+        {
+            if (IsDead || amount <= 0f || CurrentHealth >= MaxHealth)
+            {
+                return;
+            }
+
+            var previousHealth = CurrentHealth;
+            CurrentHealth = Mathf.Min(MaxHealth, CurrentHealth + amount);
+            Healed?.Invoke(CurrentHealth - previousHealth);
         }
     }
 }

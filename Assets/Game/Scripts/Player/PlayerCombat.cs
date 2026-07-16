@@ -16,6 +16,8 @@ namespace BAA
         private PlayerRuntimeStats _stats;
         private float _attackCooldown;
 
+        public PlayerRuntimeStats RuntimeStats => _stats;
+
         private void Awake()
         {
             _stats = new PlayerRuntimeStats

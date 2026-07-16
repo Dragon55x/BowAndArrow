@@ -14,5 +14,6 @@ namespace BAA
         [field: SerializeField, Min(0f)] public float WindupDuration { get; set; } = 0.4f;
         [field: SerializeField, Min(0f)] public float RecoveryDuration { get; set; } = 1f;
         [field: SerializeField, Min(0f)] public float Damage { get; set; } = 15f;
+        [field: SerializeField, Min(0)] public int ExperienceReward { get; set; } = 10;
     }
 }

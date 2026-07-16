@@ -21,3 +21,4 @@ MonoBehaviour:
   <WindupDuration>k__BackingField: 0.4
   <RecoveryDuration>k__BackingField: 1
   <Damage>k__BackingField: 15
+  <ExperienceReward>k__BackingField: 10

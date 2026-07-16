@@ -22,7 +22,7 @@ namespace BAA
 
         private void Awake()
         {
-            Time.timeScale = 1f;
+            GamePauseCoordinator.Reset();
         }
 
         private void Start()
@@ -51,7 +51,7 @@ namespace BAA
 
             _isGameOver = true;
             gameOverPanel.SetActive(true);
-            Time.timeScale = 0f;
+            GamePauseCoordinator.Acquire(this);
         }
 
         private void Restart()
@@ -63,12 +63,13 @@ namespace BAA
 
             _isRestarting = true;
             restartButton.interactable = false;
-            Time.timeScale = 1f;
+            GamePauseCoordinator.Release(this);
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
 
         private void OnDestroy()
         {
+            GamePauseCoordinator.Release(this);
             if (playerHealth != null)
             {
                 playerHealth.Died -= OnPlayerDied;

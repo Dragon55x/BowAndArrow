@@ -104,5 +104,71 @@ namespace BAA.Tests
                 Object.DestroyImmediate(go);
             }
         }
+
+        [Test]
+        public void Heal_RestoresHealthWithoutExceedingMaximum()
+        {
+            var go = new GameObject("HealTest");
+            try
+            {
+                var health = go.AddComponent<CharacterHealth>();
+                health.Initialize(100f);
+                health.TakeDamage(new DamageInfo(40f, this));
+
+                health.Heal(15f);
+                health.Heal(100f);
+
+                Assert.That(health.CurrentHealth, Is.EqualTo(100f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void Heal_WhenDead_DoesNotRevive()
+        {
+            var go = new GameObject("DeadHealTest");
+            try
+            {
+                var health = go.AddComponent<CharacterHealth>();
+                health.Initialize(10f);
+                health.TakeDamage(new DamageInfo(10f, this));
+
+                health.Heal(10f);
+
+                Assert.That(health.CurrentHealth, Is.Zero);
+                Assert.That(health.IsDead, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void Heal_WithNonPositiveAmount_DoesNotChangeHealthOrRaiseEvent()
+        {
+            var go = new GameObject("InvalidHealTest");
+            try
+            {
+                var health = go.AddComponent<CharacterHealth>();
+                health.Initialize(100f);
+                health.TakeDamage(new DamageInfo(40f, this));
+                var healedEvents = 0;
+                health.Healed += _ => healedEvents++;
+
+                health.Heal(0f);
+                health.Heal(-10f);
+
+                Assert.That(health.CurrentHealth, Is.EqualTo(60f));
+                Assert.That(healedEvents, Is.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
     }
 }

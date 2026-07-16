@@ -26,6 +26,7 @@ namespace BAA
             }
 
             health.Damaged += OnHealthChanged;
+            health.Healed += OnHealthChanged;
             health.Died += OnDied;
             _isSubscribed = true;
             Refresh();
@@ -56,6 +57,7 @@ namespace BAA
             }
 
             health.Damaged -= OnHealthChanged;
+            health.Healed -= OnHealthChanged;
             health.Died -= OnDied;
         }
     }

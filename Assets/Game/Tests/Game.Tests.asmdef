@@ -1,0 +1,8 @@
+{
+  "name": "Game.Tests",
+  "rootNamespace": "BAA.Tests",
+  "references": ["Game.Runtime"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

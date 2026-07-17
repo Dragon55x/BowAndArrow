@@ -2,6 +2,26 @@ using UnityEngine;
 
 namespace BAA
 {
+    public sealed class ExperienceSettlementCounter
+    {
+        public int PendingCount { get; private set; }
+
+        public void Register()
+        {
+            PendingCount++;
+        }
+
+        public void Unregister()
+        {
+            PendingCount = Mathf.Max(0, PendingCount - 1);
+        }
+
+        public void Reset()
+        {
+            PendingCount = 0;
+        }
+    }
+
     public sealed class ExperienceOrb : MonoBehaviour
     {
         [SerializeField, Min(0f)] private float attractionDelay = 0.2f;
@@ -11,10 +31,26 @@ namespace BAA
 
         private PlayerProgression _target;
         private float _remainingDelay;
+        private bool _isPending;
+        private static readonly ExperienceSettlementCounter SettlementCounter =
+            new ExperienceSettlementCounter();
+
+        public static int PendingCount => SettlementCounter.PendingCount;
 
         public void Initialize(int amount)
         {
             experienceAmount = Mathf.Max(1, amount);
+        }
+
+        private void OnEnable()
+        {
+            if (_isPending)
+            {
+                return;
+            }
+
+            _isPending = true;
+            SettlementCounter.Register();
         }
 
         private void Start()
@@ -57,6 +93,23 @@ namespace BAA
 
             _target.AddExperience(experienceAmount);
             Destroy(gameObject);
+        }
+
+        private void OnDisable()
+        {
+            if (!_isPending)
+            {
+                return;
+            }
+
+            _isPending = false;
+            SettlementCounter.Unregister();
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            SettlementCounter.Reset();
         }
     }
 }
